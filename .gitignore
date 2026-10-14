@@ -1,0 +1,36 @@
+# Flutter/Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+.pub-cache/
+.pub/
+*.iml
+
+# Android
+android/local.properties
+android/**/*.keystore
+android/key.properties
+*.jks
+
+# iOS
+ios/Pods/
+ios/Flutter/Flutter.podspec
+
+# Note: lib/config/app_config.dart is intentionally NOT ignored — every value
+# in it (Supabase anon key, OneSignal app id, AdMob unit ids) is meant to
+# ship inside the compiled app, so there's nothing there worth hiding from
+# git. Keep real secrets (if you ever add any) out of this repo instead.
+# Widget Preview related
+.widget_preview/
+
+# IDE-local project state
+.idea/
+
+# Flutter generated platform state
+**/ephemeral/
+
+# Android generated state
+android/.gradle/
+android/.kotlin/

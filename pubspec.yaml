@@ -1,0 +1,40 @@
+name: jua_quiz
+description: "Jua Quiz — a daily trivia challenge, Kenya-focused to start."
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ">=3.9.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  supabase_flutter: ^2.17.2
+  app_links: ^7.2.1
+  google_mobile_ads: ^9.1.0
+  onesignal_flutter: ^5.3.4
+  cupertino_icons: ^1.0.8
+  shared_preferences: ^2.5.5
+  audioplayers: ^6.1.0
+  url_launcher: ^6.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  assets:
+    - assets/guess_it/
+    - assets/odd_one_out/
+    - assets/journey/strips/
+    - assets/journey/caps/
+    - assets/journey/ui/
+    - assets/journey/props/
+    - assets/hub/cards/
+    - assets/scene/
+    - assets/mascot/
+    - assets/ui/
+    - assets/dialog/
+    - assets/sfx/
+  uses-material-design: true
