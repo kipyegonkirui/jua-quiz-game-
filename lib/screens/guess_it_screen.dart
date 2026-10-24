@@ -12,6 +12,7 @@ import '../services/guess_it_service.dart';
 import '../services/sound_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/auto_advance.dart';
 import '../widgets/jua_buttons.dart';
 import '../widgets/jua_dialog.dart';
 import '../widgets/mode_level_summary.dart';
@@ -39,6 +40,8 @@ class _GuessItScreenState extends State<GuessItScreen> {
   bool _submitting = false;
   String? _error;
   Timer? _timer;
+  Timer? _autoNext; // right answers roll on by themselves
+  static const Duration _autoNextDelay = Duration(milliseconds: 3000);
   int _remainingMs = 15000;
   DateTime? _questionStartedAt;
   GuessItGameResult? _result;
@@ -71,6 +74,7 @@ class _GuessItScreenState extends State<GuessItScreen> {
 
   @override
   void dispose() {
+    _autoNext?.cancel();
     _timer?.cancel();
     _scroll.dispose();
     super.dispose();
@@ -187,6 +191,7 @@ class _GuessItScreenState extends State<GuessItScreen> {
       });
       WidgetsBinding.instance.addPostFrameCallback((_) => _afterAnswerLayout());
       if (result.isCorrect) {
+        _scheduleAutoNext();
         HapticFeedback.mediumImpact();
         SoundService.instance.play(Sfx.correct);
         if (_combo >= 3) {
@@ -264,7 +269,20 @@ class _GuessItScreenState extends State<GuessItScreen> {
     });
   }
 
+  /// A right answer moves on by itself after a moment (long enough to read the
+  /// fun fact); a wrong one waits for the player to tap Next.
+  void _scheduleAutoNext() {
+    final index = _index;
+    _autoNext?.cancel();
+    _autoNext = Timer(_autoNextDelay, () {
+      if (!mounted || _index != index || !_answered || _submitting) return;
+      if (_answer?.isCorrect != true) return;
+      _next();
+    });
+  }
+
   Future<void> _next() async {
+    _autoNext?.cancel();
     if (!_answered) return;
     if (!_roundEndsNow) {
       setState(() {
@@ -727,12 +745,20 @@ class _GuessItScreenState extends State<GuessItScreen> {
             ),
           ],
           const SizedBox(height: 12),
-          JuaDialogButton(
-            label: last ? 'See Results' : 'Next',
-            icon: last ? Icons.emoji_events_rounded : Icons.arrow_forward_rounded,
-            style: last ? JuaDialogButtonStyle.green : JuaDialogButtonStyle.blue,
-            onPressed: _submitting ? null : _next,
-          ),
+          if (correct)
+            AutoAdvanceBar(
+              duration: _autoNextDelay,
+              label: last ? 'Finishing up…' : 'Next question…',
+              dark: true,
+              onSkip: _submitting ? null : _next,
+            )
+          else
+            JuaDialogButton(
+              label: last ? 'See Results' : 'Next',
+              icon: last ? Icons.emoji_events_rounded : Icons.arrow_forward_rounded,
+              style: last ? JuaDialogButtonStyle.green : JuaDialogButtonStyle.blue,
+              onPressed: _submitting ? null : _next,
+            ),
         ],
       ),
     );

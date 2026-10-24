@@ -4,8 +4,10 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 
 import '../models/football_journey.dart';
+import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/jua_buttons.dart';
+import 'football_play_screen.dart';
 
 const String _fbStar = 'assets/football/fb_star.png';
 const String _fbLock = 'assets/football/fb_lock.png';
@@ -27,9 +29,10 @@ Widget _sprite(String asset, {double? width, double? height}) {
 
 /// Football Challenge: a winding road map of levels through six themed zones.
 ///
-/// There is no question content yet, so tapping an open level only shows a
-/// "coming soon" sheet. In debug builds, long-press an open level to cycle its
-/// stars (0 → 3) and preview the completed / current / locked looks.
+/// Tapping an open level starts a 5-kick penalty shootout of football trivia
+/// ([FootballPlayScreen]). Stars come from the server. In debug builds,
+/// long-press an open level to cycle its stars (0 → 3) and preview the
+/// completed / current / locked looks (local only, never saved).
 class FootballJourneyScreen extends StatefulWidget {
   const FootballJourneyScreen({super.key});
 
@@ -39,6 +42,30 @@ class FootballJourneyScreen extends StatefulWidget {
 
 class _FootballJourneyScreenState extends State<FootballJourneyScreen> {
   FootballJourney _journey = const FootballJourney();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadJourney();
+  }
+
+  Future<void> _loadJourney() async {
+    try {
+      final stars = await SupabaseService.instance.getFootballStars();
+      if (!mounted) return;
+      setState(() => _journey = FootballJourney(stars: stars));
+    } catch (e) {
+      // The road still shows (all locked but Level 1); progress reloads on return.
+      debugPrint('Could not load the Football road: $e');
+    }
+  }
+
+  Future<void> _play(int level) async {
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => FootballPlayScreen(level: level)),
+    );
+    if (mounted) await _loadJourney();
+  }
 
   void _openLevel(int level) {
     final unlocked = _journey.isUnlocked(level);
@@ -85,8 +112,8 @@ class _FootballJourneyScreenState extends State<FootballJourneyScreen> {
                 const SizedBox(height: 10),
                 Text(
                   unlocked
-                      ? 'Match-day questions are coming soon. The road is ready, we are still warming up the questions.'
-                      : 'Complete Level ${level - 1} first, then this match opens.',
+                      ? 'Penalty shootout: 5 football questions, 5 kicks. A right answer is a goal. 3 goals earn a star.'
+                      : 'Win a star on Level ${level - 1} first, then this match opens.',
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: Colors.black54, height: 1.4),
                 ),
@@ -105,10 +132,13 @@ class _FootballJourneyScreenState extends State<FootballJourneyScreen> {
                 ],
                 const SizedBox(height: 16),
                 JuaGlossyButton(
-                  label: 'Back to the road',
-                  icon: Icons.route_rounded,
+                  label: unlocked ? 'Kick off' : 'Back to the road',
+                  icon: unlocked ? Icons.sports_soccer_rounded : Icons.route_rounded,
                   variant: JuaButtonVariant.action,
-                  onPressed: () => Navigator.of(sheetContext).pop(),
+                  onPressed: () {
+                    Navigator.of(sheetContext).pop();
+                    if (unlocked) _play(level);
+                  },
                 ),
               ],
             ),
@@ -135,8 +165,8 @@ class _FootballJourneyScreenState extends State<FootballJourneyScreen> {
         actions: [
           if (kDebugMode)
             IconButton(
-              tooltip: 'Reset preview',
-              onPressed: () => setState(() => _journey = const FootballJourney()),
+              tooltip: 'Reload from server',
+              onPressed: _loadJourney,
               icon: const Icon(Icons.restart_alt_rounded),
             ),
         ],

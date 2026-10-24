@@ -1,3 +1,5 @@
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../models/odd_one_out.dart';
 import 'supabase_service.dart';
 
@@ -32,6 +34,17 @@ class OddOneOutService {
         roundId: roundId,
         puzzleId: puzzleId,
       );
+
+  static Future<OddOneOutHintResult> useWatchHint({
+    required String roundId,
+    required String puzzleId,
+  }) async {
+    final res = await Supabase.instance.client.rpc('use_odd_one_out_watch_hint', params: {
+      'p_round_id': roundId,
+      'p_puzzle_id': puzzleId,
+    });
+    return OddOneOutHintResult.fromMap(Map<String, dynamic>.from(res as Map));
+  }
 
   static Future<OddOneOutResult> submit(String roundId) =>
       SupabaseService.instance.submitOddOneOutRound(roundId);

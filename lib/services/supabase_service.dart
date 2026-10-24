@@ -17,6 +17,7 @@ import '../models/streak_dashboard.dart';
 import '../models/practice_journey.dart';
 import '../models/practice_lives.dart';
 import '../models/guess_it.dart';
+import '../models/football_journey.dart';
 import '../models/odd_one_out.dart';
 import '../models/mode_journey.dart';
 import '../game/models/game_question.dart';
@@ -489,6 +490,49 @@ class SupabaseService {
       for (final r in (rows as List))
         (r as Map<String, dynamic>)['question_id'] as String: AnswerResult.fromMap(r),
     };
+  }
+
+  // ------------------------------------------------- Football Challenge --
+  /// Star map for the Football road: {level: stars}.
+  Future<Map<int, int>> getFootballStars() async {
+    final res = await _client.rpc('get_football_journey');
+    final stars = (Map<String, dynamic>.from(res as Map)['stars'] as Map?) ?? const {};
+    return {for (final e in stars.entries) int.parse(e.key.toString()): (e.value as num).toInt()};
+  }
+
+  /// Starts (or resumes) a 5-kick shootout for [level]; returns the round id.
+  Future<String> startFootballLevel(int level) async {
+    final res = await _client.rpc('start_football_level', params: {'p_level': level});
+    return res as String;
+  }
+
+  Future<List<Question>> getFootballQuestions(String roundId) async {
+    final rows = await _client.rpc('get_football_questions', params: {'p_round_id': roundId});
+    return (rows as List).map((r) => Question.fromMap(r as Map<String, dynamic>)).toList();
+  }
+
+  Future<Map<String, AnswerResult>> getFootballProgress(String roundId) async {
+    final rows = await _client.rpc('get_football_progress', params: {'p_round_id': roundId});
+    return _progressMap(rows);
+  }
+
+  /// One kick: the server locks the answer and says goal (right) or save (wrong).
+  Future<AnswerResult> answerFootballQuestion({
+    required String roundId,
+    required String questionId,
+    required String choice,
+  }) async {
+    final res = await _client.rpc('answer_football_question', params: {
+      'p_round_id': roundId,
+      'p_question_id': questionId,
+      'p_choice': choice,
+    });
+    return AnswerResult.fromMap(Map<String, dynamic>.from(res as Map));
+  }
+
+  Future<FootballRoundResult> submitFootballRound(String roundId) async {
+    final res = await _client.rpc('submit_football_round', params: {'p_round_id': roundId});
+    return FootballRoundResult.fromMap(Map<String, dynamic>.from(res as Map));
   }
 
   // ------------------------------------------------------ Practice rounds --

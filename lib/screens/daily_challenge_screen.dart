@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/supabase_service.dart';
 import '../services/ads_service.dart';
@@ -45,6 +46,7 @@ class _DailyChallengeScreenState extends State<DailyChallengeScreen> {
   String? get _selected => _gameController?.session.selectedOption;
   AnswerResult? _answerResult; // set once the server has checked this question
   bool _checking = false;
+  Timer? _autoNext; // moves on by itself after a right answer
   AttemptResult? _result;
   int? _existingStreak;
 
@@ -317,6 +319,7 @@ class _DailyChallengeScreenState extends State<DailyChallengeScreen> {
           _retryUnlocked = false;
         }
       });
+      _scheduleAutoNext();
     } catch (_) {
       if (!mounted) return;
       setState(() => _checking = false);
@@ -326,7 +329,29 @@ class _DailyChallengeScreenState extends State<DailyChallengeScreen> {
     }
   }
 
+  /// A right answer slides to the next question by itself; a wrong one waits
+  /// for the player to read the answer and tap Next.
+  void _scheduleAutoNext() {
+    final r = _answerResult;
+    if (r == null || !r.isFinal || !r.isCorrect) return;
+    final index = _current;
+    _autoNext?.cancel();
+    _autoNext = Timer(kAutoAdvanceDelay, () {
+      if (!mounted || _current != index || _status != _Status.inProgress) return;
+      final now = _answerResult;
+      if (now == null || !now.isFinal || !now.isCorrect) return;
+      _nextQuestion();
+    });
+  }
+
+  @override
+  void dispose() {
+    _autoNext?.cancel();
+    super.dispose();
+  }
+
   Future<void> _nextQuestion() async {
+    _autoNext?.cancel();
     final controller = _gameController;
     if (controller == null || controller.session.status != GameSessionStatus.answerPending) return;
 

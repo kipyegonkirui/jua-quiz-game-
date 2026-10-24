@@ -80,3 +80,26 @@ Active migration added in Phase 1 Step 13:
 34. `028_guess_it_reveal_and_facts.sql` — Guess It: 8-question rounds, 50/50 (first free) + sharper-picture hints, facts returned with answers. Needs 027 and the Guess It picture pack. Independent of the Odd One Out files above, so it can run before or after them. (Two files start with 028; their full names differ, so neither overwrites the other.)
 
 > Note: `012_daily_missions.sql` is only a smoke check. The missions backend itself is `026_daily_missions.sql`.
+
+## Content batches added in v16.2 (run after `024_content_quality.sql`; all safe to re-run)
+
+1. `batch5_fix_existing.sql` - run once. Switches off one wrong question (Kenya's first Olympic gold was Naftali Temu's 10,000 m, not Keino's 1500 m).
+2. `seed_kenya_questions_batch5.sql` through `seed_kenya_questions_batch12.sql` - about 500 more questions with "Did you know?" lines.
+3. `content_reviews/batchN_review.md` - one review sheet per batch. Every fact must be checked by a Kenyan reviewer before release; rows marked "CHECK first" are the least certain.
+
+## Added after v16.2
+
+1. `029_odd_watch_hint.sql` - Odd One Out: watch a video to remove one wrong item (item 32 above; the file was missing from v16.2). Needs 020_odd_one_out.
+2. `030_question_fixes.sql` - corrects "third-largest city" (Nakuru, not Kisumu). Run after batch 9. `seed_kenya_questions_batch9.sql` already holds the corrected row.
+3. `seed_kenya_questions_batch13.sql` - 115 easy questions across all ten categories for the early levels. Needs 024. Safe to re-run. Review sheet: `content_reviews/batch13_review.md`.
+
+`027_odd_survival_run.sql` was a duplicate of `028_odd_survival_run.sql` and has been removed.
+
+## Football Challenge (run after 024_content_quality.sql)
+
+1. `031_football_challenge.sql` - Football Challenge backend: 5-kick penalty shootout levels, stars (3 goals = 1 star, 4 = 2, 5 = 3), level unlocking, XP (10 per goal, 300 a day) and the "Football" category. Self-contained.
+2. `seed_football_questions.sql` - 295 football questions (109 easy, 117 medium, 69 hard) with "Did you know?" lines. Run after 031. Safe to re-run. Review sheet: `content_reviews/football_review.md`.
+
+3. `seed_football_questions_2.sql` - 43 more hard football questions (112 hard in total). Run after the first football seed. Review sheet: `content_reviews/football_review_2.md`.
+
+The app also needs `- assets/football/` under `assets:` in `pubspec.yaml` (added).

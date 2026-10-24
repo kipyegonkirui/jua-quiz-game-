@@ -57,6 +57,7 @@ class _PracticeScreenState extends State<PracticeScreen> {
   bool _waitingOnAd = false;
   PracticeLives? _lives;
   Timer? _lifeTimer;
+  Timer? _autoNext; // moves on by itself after a right answer
   DateTime _lifeClock = DateTime.now();
 
   // Hints & second chances (Phase 4).
@@ -369,6 +370,7 @@ class _PracticeScreenState extends State<PracticeScreen> {
           _retryUnlocked = false;
         }
       });
+      _scheduleAutoNext();
     } catch (_) {
       if (!mounted) return;
       setState(() => _checking = false);
@@ -378,7 +380,23 @@ class _PracticeScreenState extends State<PracticeScreen> {
     }
   }
 
+  /// A right answer slides to the next question by itself; a wrong one waits
+  /// for the player to read the answer and tap Next.
+  void _scheduleAutoNext() {
+    final r = _answerResult;
+    if (r == null || !r.isFinal || !r.isCorrect) return;
+    final index = _current;
+    _autoNext?.cancel();
+    _autoNext = Timer(kAutoAdvanceDelay, () {
+      if (!mounted || _current != index || _phase != _Phase.inProgress) return;
+      final now = _answerResult;
+      if (now == null || !now.isFinal || !now.isCorrect) return;
+      _next();
+    });
+  }
+
   Future<void> _next() async {
+    _autoNext?.cancel();
     if (_busy) return;
     final controller = _gameController;
     if (controller == null) return;
@@ -481,6 +499,7 @@ class _PracticeScreenState extends State<PracticeScreen> {
 
   @override
   void dispose() {
+    _autoNext?.cancel();
     _lifeTimer?.cancel();
     super.dispose();
   }

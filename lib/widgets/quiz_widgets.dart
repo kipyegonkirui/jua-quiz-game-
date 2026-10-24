@@ -9,13 +9,20 @@ import 'question_extras.dart';
 const _correctGreen = Color(0xFF2E9E5B);
 const _wrongRed = Color(0xFFD64545);
 
+/// How long a RIGHT answer stays on screen before the next question slides in
+/// by itself. The screens use the same value for their timer, and the thin
+/// bar under "Correct!" fills over exactly this long.
+const Duration kAutoAdvanceDelay = Duration(milliseconds: 1100);
+
 /// One question with its four options. Shared by the daily challenge and
 /// practice rounds so they always look and behave identically.
 ///
-/// Two steps per question:
-///  1. Pick an option (it highlights) and press "Check answer".
-///  2. The server's verdict comes back: the right option turns green, and if
-///     the pick was wrong it turns red. The button then becomes "Next".
+/// One tap per question:
+///  1. Tap an option. It is checked straight away (no "Check answer" button).
+///  2. A RIGHT answer turns green and the next question slides in by itself
+///     after [kAutoAdvanceDelay] — no "Next" button, so the round keeps moving.
+///     A WRONG answer turns red, the right one turns green, and the player
+///     reads the answer and the fun fact, then taps "Next question".
 /// Once checked, the answer is locked — options can't be tapped any more.
 ///
 /// Phase 4 adds two optional helpers (both need a rewarded video):
@@ -63,6 +70,13 @@ class QuizView extends StatelessWidget {
   /// A rewarded video is loaded and ready to play.
   final bool rewardedReady;
 
+  /// Correct answers in a row; shown as a small flame chip from 2 upwards.
+  final int combo;
+
+  /// Tapping an option checks it at once. Set false for the old two-step
+  /// "pick, then press Check answer" behaviour.
+  final bool autoCheck;
+
   const QuizView({
     super.key,
     required this.question,
@@ -85,6 +99,8 @@ class QuizView extends StatelessWidget {
     this.onSecondChance,
     this.onDeclineSecondChance,
     this.rewardedReady = false,
+    this.combo = 0,
+    this.autoCheck = true,
   });
 
   OptionState _stateFor(String letter) {
@@ -105,12 +121,17 @@ class QuizView extends StatelessWidget {
   /// Which options can be tapped right now.
   VoidCallback? _tapFor(String letter, AnswerResult? r) {
     if (checking) return null;
-    if (r == null) return () => onSelect(letter);
+    if (r == null) return () => _pick(letter);
     // Second chance open: only after the video, and never the pick that missed.
     if (r.retryOffered && retryUnlocked && letter != r.firstChoice) {
-      return () => onSelect(letter);
+      return () => _pick(letter);
     }
     return null; // locked
+  }
+
+  void _pick(String letter) {
+    onSelect(letter);
+    if (autoCheck) onCheck?.call();
   }
 
   Widget _checkButton() {
@@ -123,12 +144,169 @@ class QuizView extends StatelessWidget {
     );
   }
 
+  static const _shadow = [Shadow(color: Color(0x99000000), blurRadius: 4, offset: Offset(0, 1))];
+
   @override
   Widget build(BuildContext context) {
     final r = result;
     final isLast = index == total - 1;
     final offered = r != null && r.retryOffered;
     final settled = r != null && r.isFinal;
+    final autoAdvancing = r != null && r.isFinal && r.isCorrect; // the screen moves on by itself
+
+    final body = Column(
+      key: ValueKey<String>('${question.id}'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 24),
+        // Scrolls on small phones / long questions instead of overflowing.
+        Expanded(
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _QuestionBanner(text: question.text),
+                const SizedBox(height: 14),
+                const Text(
+                  'Choose your answer',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, shadows: _shadow),
+                ),
+                const SizedBox(height: 12),
+                ...['a', 'b', 'c', 'd']
+                    // A hint removes wrong options — until the answer is revealed.
+                    .where((letter) => settled || !hiddenOptions.contains(letter))
+                    .map((letter) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: OptionTile(
+                            letter: letter,
+                            text: question.options[letter]!,
+                            state: _stateFor(letter),
+                            onTap: _tapFor(letter, r),
+                          ),
+                        )),
+                if (r != null && r.isFinal && r.isCorrect) ...[
+                  // Right answer: a short celebration, then the next question.
+                  // Tapping it skips the wait.
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: onNext,
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 4),
+                        Center(
+                          child: Image.asset(
+                            'assets/mascot/pose4.png',
+                            height: 84,
+                            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                          ),
+                        ),
+                        Text(
+                          r.secondChanceUsed ? 'Correct on your second try! 🎉' : 'Correct! 🎉',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 18,
+                            color: Colors.white,
+                            shadows: [Shadow(color: _correctGreen, blurRadius: 10), Shadow(color: Color(0xCC000000), blurRadius: 3)],
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        const _AutoAdvanceBar(),
+                      ],
+                    ),
+                  ),
+                ] else if (r != null && r.isFinal) ...[
+                  const SizedBox(height: 4),
+                  Center(
+                    child: Image.asset(
+                      'assets/mascot/pose3.png',
+                      height: 96,
+                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                    ),
+                  ),
+                  // Words as well as colour, so it's clear without relying on colour alone.
+                  Text(
+                    'Not quite. The answer is ${(r.correctOption ?? '?').toUpperCase()}.',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                      color: Colors.white,
+                      shadows: [Shadow(color: _wrongRed, blurRadius: 10), Shadow(color: Color(0xCC000000), blurRadius: 3)],
+                    ),
+                  ),
+                  QuestionExtras(key: ValueKey(question.id), questionId: question.id),
+                ] else if (offered) ...[
+                  const SizedBox(height: 4),
+                  Center(
+                    child: Image.asset(
+                      'assets/mascot/pose3.png',
+                      height: 80,
+                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                    ),
+                  ),
+                  Text(
+                    retryUnlocked
+                        ? 'Pick a different answer for your second chance.'
+                        : 'Not quite. Want a second chance?',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                      color: Colors.white,
+                      shadows: [Shadow(color: Color(0xCC000000), blurRadius: 4)],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        // Buttons only appear when the player has something to decide.
+        if (r == null) ...[
+          const SizedBox(height: 12),
+          if (canHint) ...[
+            JuaDialogButton(
+              label: hintBusy ? 'Loading…' : 'Get a hint',
+              icon: hintBusy ? null : Icons.lightbulb_rounded,
+              style: JuaDialogButtonStyle.green,
+              onPressed: (hintEnabled && !hintBusy && !checking) ? onHint : null,
+            ),
+            if (!autoCheck) const SizedBox(height: 10),
+          ],
+          if (!autoCheck) _checkButton(),
+        ] else if (offered) ...[
+          const SizedBox(height: 12),
+          if (retryUnlocked) ...[
+            if (!autoCheck) _checkButton(),
+          ] else ...[
+            JuaDialogButton(
+              label: retryBusy
+                  ? 'Loading…'
+                  : (rewardedReady ? 'Watch a video for a second chance' : 'Second chance (video loading...)'),
+              icon: retryBusy ? null : Icons.play_circle_fill_rounded,
+              style: JuaDialogButtonStyle.gold,
+              onPressed: (rewardedReady && !retryBusy) ? onSecondChance : null,
+            ),
+            const SizedBox(height: 10),
+            JuaDialogButton(
+              label: 'No thanks, show the answer',
+              style: JuaDialogButtonStyle.light,
+              onPressed: retryBusy ? null : onDeclineSecondChance,
+            ),
+          ],
+        ] else if (!autoAdvancing) ...[
+          const SizedBox(height: 12),
+          JuaDialogButton(
+            label: isLast ? 'Finish' : 'Next question',
+            icon: isLast ? Icons.flag_rounded : Icons.arrow_forward_rounded,
+            style: isLast ? JuaDialogButtonStyle.green : JuaDialogButtonStyle.blue,
+            onPressed: onNext,
+          ),
+        ],
+      ],
+    );
 
     return SafeArea(
       child: Padding(
@@ -139,149 +317,111 @@ class QuizView extends StatelessWidget {
             if (heading != null) ...[
               Text(
                 heading!,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  shadows: [Shadow(color: Color(0x99000000), blurRadius: 4, offset: Offset(0, 1))],
-                ),
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, shadows: _shadow),
               ),
               const SizedBox(height: 8),
             ],
-            LinearProgressIndicator(
-              value: (index + 1) / total,
-              backgroundColor: Colors.white30,
-              color: AppColors.sunGold,
-              minHeight: 8,
-              borderRadius: BorderRadius.circular(4),
+            // The bar fills smoothly as the player moves through the round.
+            TweenAnimationBuilder<double>(
+              tween: Tween<double>(end: (index + 1) / total),
+              duration: const Duration(milliseconds: 450),
+              curve: Curves.easeOutCubic,
+              builder: (context, v, _) => LinearProgressIndicator(
+                value: v,
+                backgroundColor: Colors.white30,
+                color: AppColors.sunGold,
+                minHeight: 8,
+                borderRadius: BorderRadius.circular(4),
+              ),
             ),
             const SizedBox(height: 8),
-            Text(
-              'Question ${index + 1} of $total',
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-                shadows: [Shadow(color: Color(0x99000000), blurRadius: 4, offset: Offset(0, 1))],
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Question ${index + 1} of $total',
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, shadows: _shadow),
+                  ),
+                ),
+                if (combo >= 2) _ComboChip(combo: combo),
+              ],
             ),
-            const SizedBox(height: 24),
-            // Scrolls on small phones / long questions instead of overflowing.
+            // Each new question slides in from the right as the old one leaves.
             Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _QuestionBanner(text: question.text),
-                    const SizedBox(height: 14),
-                    const Text(
-                      'Choose your answer',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                        shadows: [Shadow(color: Color(0x99000000), blurRadius: 4, offset: Offset(0, 1))],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    ...['a', 'b', 'c', 'd']
-                        // A hint removes wrong options — until the answer is revealed.
-                        .where((letter) => settled || !hiddenOptions.contains(letter))
-                        .map((letter) => Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: OptionTile(
-                                letter: letter,
-                                text: question.options[letter]!,
-                                state: _stateFor(letter),
-                                onTap: _tapFor(letter, r),
-                              ),
-                            )),
-                    if (r != null && r.isFinal) ...[
-                      const SizedBox(height: 4),
-                      Center(
-                        child: Image.asset(
-                          r.isCorrect ? 'assets/mascot/pose4.png' : 'assets/mascot/pose3.png',
-                          height: 96,
-                          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                        ),
-                      ),
-                      // Words as well as colour, so it's clear without relying on colour alone.
-                      Text(
-                        r.isCorrect
-                            ? (r.secondChanceUsed ? 'Correct on your second try! 🎉' : 'Correct! 🎉')
-                            : 'Not quite. The answer is ${(r.correctOption ?? '?').toUpperCase()}.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16,
-                          color: Colors.white,
-                          shadows: [Shadow(color: r.isCorrect ? _correctGreen : _wrongRed, blurRadius: 10), const Shadow(color: Color(0xCC000000), blurRadius: 3)],
-                        ),
-                      ),
-                      QuestionExtras(key: ValueKey(question.id), questionId: question.id),
-                    ] else if (offered) ...[
-                      const SizedBox(height: 4),
-                      Center(
-                        child: Image.asset(
-                          'assets/mascot/pose3.png',
-                          height: 80,
-                          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                        ),
-                      ),
-                      Text(
-                        retryUnlocked
-                            ? 'Pick a different answer for your second chance.'
-                            : 'Not quite. Want a second chance?',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16,
-                          color: Colors.white,
-                          shadows: [Shadow(color: Color(0xCC000000), blurRadius: 4)],
-                        ),
-                      ),
-                    ],
-                  ],
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 320),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                layoutBuilder: (current, previous) => Stack(
+                  fit: StackFit.expand,
+                  children: [...previous, if (current != null) current],
                 ),
+                transitionBuilder: (child, anim) {
+                  final incoming = child.key == ValueKey<String>('${question.id}');
+                  final slide = Tween<Offset>(
+                    begin: Offset(incoming ? 0.14 : -0.14, 0),
+                    end: Offset.zero,
+                  ).animate(anim);
+                  return FadeTransition(
+                    opacity: anim,
+                    child: SlideTransition(position: slide, child: child),
+                  );
+                },
+                child: body,
               ),
             ),
-            const SizedBox(height: 12),
-            if (r == null) ...[
-              if (canHint) ...[
-                JuaDialogButton(
-                  label: hintBusy ? 'Loading…' : 'Get a hint',
-                  icon: hintBusy ? null : Icons.lightbulb_rounded,
-                  style: JuaDialogButtonStyle.green,
-                  onPressed: (hintEnabled && !hintBusy && !checking) ? onHint : null,
-                ),
-                const SizedBox(height: 10),
-              ],
-              _checkButton(),
-            ] else if (offered) ...[
-              if (retryUnlocked)
-                _checkButton()
-              else ...[
-                JuaDialogButton(
-                  label: retryBusy
-                      ? 'Loading…'
-                      : (rewardedReady ? 'Watch a video for a second chance' : 'Second chance (video loading...)'),
-                  icon: retryBusy ? null : Icons.play_circle_fill_rounded,
-                  style: JuaDialogButtonStyle.gold,
-                  onPressed: (rewardedReady && !retryBusy) ? onSecondChance : null,
-                ),
-                const SizedBox(height: 10),
-                JuaDialogButton(
-                  label: 'No thanks, show the answer',
-                  style: JuaDialogButtonStyle.light,
-                  onPressed: retryBusy ? null : onDeclineSecondChance,
-                ),
-              ],
-            ] else
-              JuaDialogButton(
-                label: isLast ? 'Finish' : 'Next question',
-                icon: isLast ? Icons.flag_rounded : Icons.arrow_forward_rounded,
-                style: isLast ? JuaDialogButtonStyle.green : JuaDialogButtonStyle.blue,
-                onPressed: onNext,
-              ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Thin gold bar that fills while a right answer is on screen, so the player
+/// can see the next question is about to arrive.
+class _AutoAdvanceBar extends StatelessWidget {
+  const _AutoAdvanceBar();
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: kAutoAdvanceDelay,
+      curve: Curves.linear,
+      builder: (context, v, _) => ClipRRect(
+        borderRadius: BorderRadius.circular(3),
+        child: LinearProgressIndicator(
+          value: v,
+          minHeight: 5,
+          backgroundColor: Colors.white24,
+          color: AppColors.sunGold,
+        ),
+      ),
+    );
+  }
+}
+
+/// "🔥 3" chip beside the question counter once the player is on a streak.
+class _ComboChip extends StatelessWidget {
+  final int combo;
+  const _ComboChip({required this.combo});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 250),
+      transitionBuilder: (child, anim) => ScaleTransition(scale: anim, child: child),
+      child: Container(
+        key: ValueKey<int>(combo),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+        decoration: BoxDecoration(
+          color: AppColors.sunGold,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.85), width: 1.5),
+        ),
+        child: Text(
+          '🔥 $combo in a row',
+          style: const TextStyle(color: Color(0xFF4A2A00), fontWeight: FontWeight.w900, fontSize: 12),
         ),
       ),
     );

@@ -1,9 +1,6 @@
 // Football Challenge road map: zones, levels and local progress rules.
 //
-// There is no question content yet, so progress is held in memory only.
-// When content ships, replace [FootballJourney]'s star map with data loaded
-// from the server (same shape as the Practice journey) and the screen keeps
-// working unchanged.
+// Progress comes from the server (get_football_journey); see 031_football_challenge.sql.
 
 class FootballZone {
   /// 1-based zone number.
@@ -147,4 +144,41 @@ class FootballJourney {
     }
     return FootballJourney(stars: next);
   }
+}
+
+/// The server's verdict on a finished 5-kick shootout.
+class FootballRoundResult {
+  final int level;
+  final int goals;
+  final int kicks;
+  final int stars;
+  final int xpEarned;
+  final bool xpCapped;
+  final int newLevel;
+  final bool leveledUp;
+  final bool nextLevelUnlocked;
+
+  const FootballRoundResult({
+    required this.level,
+    required this.goals,
+    required this.kicks,
+    required this.stars,
+    required this.xpEarned,
+    required this.xpCapped,
+    required this.newLevel,
+    required this.leveledUp,
+    required this.nextLevelUnlocked,
+  });
+
+  factory FootballRoundResult.fromMap(Map<String, dynamic> m) => FootballRoundResult(
+        level: (m['level'] as num).toInt(),
+        goals: (m['score'] as num).toInt(),
+        kicks: (m['total'] as num).toInt(),
+        stars: (m['stars'] as num).toInt(),
+        xpEarned: (m['xp_earned'] as num?)?.toInt() ?? 0,
+        xpCapped: m['xp_capped'] as bool? ?? false,
+        newLevel: (m['new_level'] as num?)?.toInt() ?? 1,
+        leveledUp: m['leveled_up'] as bool? ?? false,
+        nextLevelUnlocked: m['next_level_unlocked'] as bool? ?? false,
+      );
 }

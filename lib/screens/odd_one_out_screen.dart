@@ -10,6 +10,7 @@ import '../services/app_events.dart';
 import '../services/odd_one_out_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/auto_advance.dart';
 import '../widgets/jua_buttons.dart';
 import '../widgets/jua_exit_dialog.dart';
 import '../widgets/mode_level_summary.dart';
@@ -57,6 +58,7 @@ class _OddOneOutScreenState extends State<OddOneOutScreen> {
   int _combo = 0;
   bool _hintUsed = false;
   bool _hintBusy = false;
+  bool _watchBusy = false;
   Set<String> _eliminated = <String>{};
   OddOneOutAnswerResult? _answer;
   bool _answering = false;
@@ -65,6 +67,8 @@ class _OddOneOutScreenState extends State<OddOneOutScreen> {
   OddOneOutResult? _result;
 
   Timer? _timer;
+  Timer? _autoNext; // right answers roll on by themselves
+  static const Duration _autoNextDelay = Duration(milliseconds: 2200);
   int _remainingMs = 12000;
   DateTime? _startedAt;
 
@@ -85,6 +89,7 @@ class _OddOneOutScreenState extends State<OddOneOutScreen> {
 
   @override
   void dispose() {
+    _autoNext?.cancel();
     _timer?.cancel();
     super.dispose();
   }
@@ -97,6 +102,7 @@ class _OddOneOutScreenState extends State<OddOneOutScreen> {
       return "You've already played today's set. Come back tomorrow!";
     }
     if (raw.contains('not_enough_coins')) return 'Not enough coins for a hint.';
+    if (raw.contains('watch_limit_reached')) return "You've used today's free hints. Come back tomorrow, or use coins.";
     if (raw.contains('no_puzzles_available')) {
       return 'No puzzles are available yet. Please try again later.';
     }
@@ -178,7 +184,11 @@ class _OddOneOutScreenState extends State<OddOneOutScreen> {
             : null;
         _stage = _Stage.playing;
       });
-      if (firstOpen != -1) _startPuzzleTimer();
+      if (firstOpen != -1) {
+        _startPuzzleTimer();
+      } else if (_answer?.isCorrect == true) {
+        _scheduleAutoNext(); // the bar is showing, so it must actually finish
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -243,6 +253,7 @@ class _OddOneOutScreenState extends State<OddOneOutScreen> {
         _combo = result.combo;
         _answering = false;
       });
+      if (result.isCorrect) _scheduleAutoNext();
     } catch (e) {
       if (!mounted) return;
       setState(() => _answering = false);
@@ -283,7 +294,69 @@ class _OddOneOutScreenState extends State<OddOneOutScreen> {
     }
   }
 
+  /// Time spent watching the video is not taken from the puzzle clock.
+  void _resumeAfterAd(DateTime? pausedAt) {
+    final started = _startedAt;
+    if (pausedAt != null && started != null) {
+      _startedAt = started.add(DateTime.now().difference(pausedAt));
+    }
+    _startPuzzleTimer(resume: true);
+  }
+
+  /// Watch a rewarded video, then the server removes ONE wrong item (free).
+  Future<void> _useWatchHint() async {
+    final roundId = _roundId;
+    final puzzle = _puzzle;
+    if (roundId == null || puzzle == null || _answered || _answering || _hintUsed || _hintBusy || _watchBusy) {
+      return;
+    }
+    DateTime? pausedAt;
+    setState(() => _watchBusy = true);
+    try {
+      _timer?.cancel();
+      pausedAt = DateTime.now();
+      final shown = await AdCoordinator.showRewarded();
+      if (!mounted) return;
+      if (shown != RewardedResult.earned) {
+        setState(() => _watchBusy = false);
+        _resumeAfterAd(pausedAt);
+        _toast(shown == RewardedResult.notEarned
+            ? 'Watch the whole video to remove an item.'
+            : 'No video is available right now. Try again in a moment.');
+        return;
+      }
+      final result = await OddOneOutService.useWatchHint(roundId: roundId, puzzleId: puzzle.id);
+      if (!mounted) return;
+      HapticFeedback.selectionClick();
+      setState(() {
+        _hintUsed = true;
+        _eliminated = result.eliminatedOptions;
+        _watchBusy = false;
+      });
+      _resumeAfterAd(pausedAt);
+      _toast('One wrong item removed');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _watchBusy = false);
+      _resumeAfterAd(pausedAt);
+      _toast(_friendly(e));
+    }
+  }
+
+  /// A right answer moves on by itself after a moment (long enough to read the
+  /// explanation); a wrong one waits for the player to tap Next.
+  void _scheduleAutoNext() {
+    final index = _index;
+    _autoNext?.cancel();
+    _autoNext = Timer(_autoNextDelay, () {
+      if (!mounted || _index != index || !_answered || _submitting) return;
+      if (_answer?.isCorrect != true) return;
+      _next();
+    });
+  }
+
   Future<void> _next() async {
+    _autoNext?.cancel();
     if (!_answered) return;
     if (_index + 1 < _puzzles.length) {
       final next = _puzzles[_index + 1];
@@ -741,12 +814,19 @@ class _OddOneOutScreenState extends State<OddOneOutScreen> {
                   if (answer != null) ...[
                     _buildReveal(answer),
                     const SizedBox(height: 14),
-                    JuaGlossyButton(
-                      label: _index + 1 == _puzzles.length ? 'See Results' : 'Next',
-                      icon: _index + 1 == _puzzles.length ? Icons.emoji_events_rounded : Icons.arrow_forward_rounded,
-                      variant: JuaButtonVariant.action,
-                      onPressed: _submitting ? null : _next,
-                    ),
+                    if (answer.isCorrect)
+                      AutoAdvanceBar(
+                        duration: _autoNextDelay,
+                        label: _index + 1 == _puzzles.length ? 'Finishing up…' : 'Next puzzle…',
+                        onSkip: _submitting ? null : _next,
+                      )
+                    else
+                      JuaGlossyButton(
+                        label: _index + 1 == _puzzles.length ? 'See Results' : 'Next',
+                        icon: _index + 1 == _puzzles.length ? Icons.emoji_events_rounded : Icons.arrow_forward_rounded,
+                        variant: JuaButtonVariant.action,
+                        onPressed: _submitting ? null : _next,
+                      ),
                   ],
                 ],
               ),
@@ -827,8 +907,9 @@ class _OddOneOutScreenState extends State<OddOneOutScreen> {
 
   Widget _buildHintBar() {
     if (_answered) return const SizedBox.shrink();
+    final busy = _hintBusy || _watchBusy;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: .13),
         borderRadius: BorderRadius.circular(18),
@@ -840,17 +921,27 @@ class _OddOneOutScreenState extends State<OddOneOutScreen> {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              _hintUsed ? 'Two wrong items removed' : 'Remove two wrong items',
+              _hintUsed ? 'Wrong items removed' : 'Need help?',
               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
             ),
           ),
-          if (!_hintUsed)
+          if (!_hintUsed) ...[
+            ValueListenableBuilder<bool>(
+              valueListenable: AdCoordinator.rewardedReady,
+              builder: (_, ready, __) => TextButton.icon(
+                onPressed: busy ? null : _useWatchHint,
+                icon: Icon(ready ? Icons.play_circle_fill_rounded : Icons.hourglass_top_rounded, size: 18),
+                label: const Text('Watch: remove 1'),
+                style: TextButton.styleFrom(foregroundColor: Colors.white),
+              ),
+            ),
             TextButton.icon(
-              onPressed: _hintBusy ? null : _useHint,
+              onPressed: busy ? null : _useHint,
               icon: const Icon(Icons.monetization_on_rounded, size: 16),
-              label: const Text('$_hintCost'),
+              label: const Text('$_hintCost: remove 2'),
               style: TextButton.styleFrom(foregroundColor: AppColors.sunGold),
             ),
+          ],
         ],
       ),
     );

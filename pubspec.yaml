@@ -26,6 +26,7 @@ dev_dependencies:
 flutter:
   assets:
     - assets/guess_it/
+    - assets/football/
     - assets/odd_one_out/
     - assets/journey/strips/
     - assets/journey/caps/
@@ -35,6 +36,7 @@ flutter:
     - assets/scene/
     - assets/mascot/
     - assets/ui/
+    - assets/logo/
     - assets/dialog/
     - assets/sfx/
   uses-material-design: true

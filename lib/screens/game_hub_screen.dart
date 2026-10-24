@@ -6,6 +6,7 @@ import '../widgets/daily_countdown.dart';
 import '../widgets/jua_dialog.dart';
 import '../widgets/progression_summary_card.dart';
 import 'daily_challenge_screen.dart';
+import 'football_journey_screen.dart';
 import '../models/mode_journey.dart';
 import 'practice_journey_screen.dart';
 
@@ -117,7 +118,6 @@ const _gameCards = <_GameCardData>[
     pillColor: Color(0xFF024A2C),
     buttonTop: Color(0xFF62E62A),
     buttonBottom: Color(0xFF05B416),
-    available: false,
   ),
   _GameCardData(
     kind: _GameCardKind.world,
@@ -189,8 +189,9 @@ class _GameHubScreenState extends State<GameHubScreen> {
         return '🏆 Live now';
       case _GameCardKind.oddOneOut:
         return '🔎 New set daily';
-      case _GameCardKind.findDifference:
       case _GameCardKind.football:
+        return '⚽ 5 penalties';
+      case _GameCardKind.findDifference:
       case _GameCardKind.world:
         return '✨ Coming soon';
     }
@@ -237,8 +238,10 @@ class _GameHubScreenState extends State<GameHubScreen> {
       case _GameCardKind.oddOneOut:
         Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PracticeJourneyScreen(mode: JourneyMode.oddOneOut)));
         return;
-      case _GameCardKind.findDifference:
       case _GameCardKind.football:
+        Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FootballJourneyScreen()));
+        return;
+      case _GameCardKind.findDifference:
       case _GameCardKind.world:
         _showComingSoon(card.title);
         return;

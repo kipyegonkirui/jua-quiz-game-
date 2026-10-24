@@ -8,6 +8,7 @@ import '../services/app_events.dart';
 import '../services/sound_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/auto_advance.dart';
 import '../widgets/game_effects.dart';
 import '../widgets/jua_buttons.dart';
 import '../widgets/jua_dialog.dart';
@@ -515,12 +516,20 @@ class _OddSurvivalScreenState extends State<OddSurvivalScreen> {
           Text('💡 ${a.explanation}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.inkBrown, height: 1.3)),
         ],
         const SizedBox(height: 10),
-        JuaGlossyButton(
-          label: s.status == 'playing' ? 'NEXT' : (s.status == 'offer' ? 'CONTINUE' : 'SEE RESULTS'),
-          icon: Icons.arrow_forward_rounded,
-          variant: JuaButtonVariant.action,
-          onPressed: _continue,
-        ),
+        if (a.isCorrect && s.status == 'playing')
+          AutoAdvanceBar(
+            duration: const Duration(milliseconds: 1500),
+            label: 'Next puzzle…',
+            dark: true,
+            onSkip: _continue,
+          )
+        else
+          JuaGlossyButton(
+            label: s.status == 'playing' ? 'NEXT' : (s.status == 'offer' ? 'CONTINUE' : 'SEE RESULTS'),
+            icon: Icons.arrow_forward_rounded,
+            variant: JuaButtonVariant.action,
+            onPressed: _continue,
+          ),
       ]),
     );
   }
